@@ -28,7 +28,7 @@ import (
 )
 
 // reportFinishedJson creates and writes the finished.json file to the specified path
-func reportFinishedJson(report string, build string, tmpdir string, success bool, metadata map[string]string) error {
+func reportFinishedJson(report string, buildID string, tmpdir string, success bool, metadata map[string]string) error {
 	m := make(map[string]interface{})
 	m["timestamp"] = time.Now().Unix()
 	if success {
@@ -50,11 +50,11 @@ func reportFinishedJson(report string, build string, tmpdir string, success bool
 	if err := enc.Encode(m); err != nil {
 		return fmt.Errorf("error writing %q: %v", p, err)
 	}
-	return gcsUploadFile(urlJoin(report, "finished.json"), p)
+	return gcsUploadFile(urlJoin(report, buildID, "finished.json"), p)
 }
 
 // reportStartedJson creates and writes the started.json file to the specified path
-func reportStartedJson(report string, build string, tmpdir string) error {
+func reportStartedJson(report string, buildID string, tmpdir string) error {
 	m := make(map[string]interface{})
 	m["timestamp"] = time.Now().Unix()
 
@@ -95,7 +95,7 @@ func reportStartedJson(report string, build string, tmpdir string) error {
 	if err := enc.Encode(m); err != nil {
 		return fmt.Errorf("error writing %q: %v", p, err)
 	}
-	return gcsUploadFile(urlJoin(report, "started.json"), p)
+	return gcsUploadFile(urlJoin(report, buildID, "started.json"), p)
 }
 
 func urlJoin(elems ...string) string {
@@ -106,19 +106,19 @@ func urlJoin(elems ...string) string {
 }
 
 // uploadReportFiles copies files to the report destination
-func uploadReportFiles(report string, build string, dump string, logpath string) error {
+func uploadReportFiles(report string, buildID string, dump string, logpath string) error {
 	if logpath != "" {
-		if err := gcsUploadFile(urlJoin(report, build, "build-log.txt"), logpath); err != nil {
+		if err := gcsUploadFile(urlJoin(report, buildID, "build-log.txt"), logpath); err != nil {
 			return fmt.Errorf("error uploading build-log: %v", err)
 		}
 	}
 	if dump != "" {
-		if err := gcsUploadArtfiacts(urlJoin(report, build, "artifacts"), dump); err != nil {
+		if err := gcsUploadArtfiacts(urlJoin(report, buildID, "artifacts"), dump); err != nil {
 			return fmt.Errorf("error uploading artifacts: %v", err)
 		}
 	}
 
-	return gcsSetFileContents(urlJoin(report, "latest-build.txt"), []byte(build))
+	return gcsSetFileContents(urlJoin(report, "latest-build.txt"), []byte(buildID))
 }
 
 func gcsUploadFile(dst, src string) error {
