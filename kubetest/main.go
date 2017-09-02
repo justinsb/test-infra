@@ -275,20 +275,36 @@ func complete(o *options) error {
 		interrupt.Reset(timeout)
 	}
 
+	success := false
+
 	if o.report != "" {
+		buildID := getBuildName()
+		tmpdir, err := ioutil.TempDir("", "kubetest-dump")
+		if err != nil {
+			return fmt.Errorf("error creating tempdir for dumping output: %v", err)
+		}
 		if o.dump == "" {
-			tmpdir, err := ioutil.TempDir("", "kubetest-dump")
-			if err != nil {
-				return fmt.Errorf("error creating tempdir for dumping output: %v", err)
-			}
-			o.dump = tmpdir
+			o.dump = filepath.Join(tmpdir, "artifacts")
 		}
 		if o.logpath == "" {
-			o.logpath = filepath.Join(o.dump, "build-log.txt")
+			o.logpath = filepath.Join(tmpdir, "build-log.txt")
 		}
-		if err := reportStartedJson(o.report); err != nil {
+		if err := reportStartedJson(o.report, buildID, tmpdir); err != nil {
 			return fmt.Errorf("error writing started.json: %v", err)
 		}
+		defer func() {
+			// Load the metadata output
+			metadata := map[string]string{}
+			maybeMergeJSON(metadata, filepath.Join(o.dump, "metadata.json"))
+
+			if err := reportFinishedJson(o.report, buildID, tmpdir, success, metadata); err != nil {
+				log.Printf("error writing finished.json: %v", err)
+			}
+
+			if err := uploadReportFiles(o.report, buildID, o.dump, o.logpath); err != nil {
+				log.Printf("error uploading report files: %v", err)
+			}
+		}()
 	}
 
 	if o.logpath != "" {
@@ -305,19 +321,10 @@ func complete(o *options) error {
 		log.SetOutput(io.MultiWriter(os.Stderr, out))
 	}
 
-	success := false
-
 	if o.dump != "" {
 		defer func() {
-			m, err := writeMetadata(o.dump, o.metadataSources)
-			if err != nil {
+			if err := writeMetadata(o.dump, o.metadataSources); err != nil {
 				log.Printf("error writing metadata: %v", err)
-			}
-			// We always have o.dump != "" when o.report != ""
-			if o.report != "" {
-				if err := reportFinishedJson(o.report, success, m); err != nil {
-					log.Printf("error writing finished.json: %v", err)
-				}
 			}
 		}()
 		defer writeXML(o.dump, time.Now())
@@ -471,7 +478,7 @@ func maybeMergeJSON(meta map[string]string, path string) {
 }
 
 // Write metadata.json, including version and env arg data.
-func writeMetadata(path, metadataSources string) (map[string]string, error) {
+func writeMetadata(path, metadataSources string) error {
 	m := make(map[string]string)
 
 	// Look for any sources of metadata and load 'em
@@ -494,13 +501,13 @@ func writeMetadata(path, metadataSources string) (map[string]string, error) {
 	}
 	f, err := os.Create(filepath.Join(path, "metadata.json"))
 	if err != nil {
-		return m, err
+		return err
 	}
 	defer f.Close()
 	if err := json.NewEncoder(f).Encode(m); err != nil {
-		return m, fmt.Errorf("error writing metadata.json: %v", err)
+		return fmt.Errorf("error writing metadata.json: %v", err)
 	}
-	return m, nil
+	return nil
 }
 
 // Install cloudsdk tarball to location, updating PATH
