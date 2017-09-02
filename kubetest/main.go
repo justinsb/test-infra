@@ -21,6 +21,7 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -84,6 +85,7 @@ type options struct {
 	kubemark            bool
 	kubemarkMasterSize  string
 	kubemarkNodes       string // TODO(fejta): switch to int after migration
+	logpath             string
 	logexporterGCSPath  string
 	metadataSources     string
 	multipleFederations bool
@@ -130,6 +132,7 @@ func defineFlags() *options {
 	flag.StringVar(&o.kubemarkMasterSize, "kubemark-master-size", "", "Kubemark master size (only relevant if --kubemark=true). Auto-calculated based on '--kubemark-nodes' if left empty.")
 	flag.StringVar(&o.kubemarkNodes, "kubemark-nodes", "5", "Number of kubemark nodes to start (only relevant if --kubemark=true).")
 	flag.StringVar(&o.logexporterGCSPath, "logexporter-gcs-path", "", "Path to the GCS artifacts directory to dump logs from nodes. Logexporter gets enabled if this is non-empty")
+	flag.StringVar(&o.logpath, "log", "", "Path to a file where we should write logs")
 	flag.StringVar(&o.metadataSources, "metadata-sources", "images.json", "Comma-separated list of files inside ./artifacts to merge into metadata.json")
 	flag.BoolVar(&o.multipleFederations, "multiple-federations", false, "If true, enable running multiple federation control planes in parallel")
 	flag.StringVar(&o.nodeArgs, "node-args", "", "Args for node e2e tests.")
@@ -270,6 +273,18 @@ func complete(o *options) error {
 	if o.dump != "" {
 		defer writeMetadata(o.dump, o.metadataSources)
 		defer writeXML(o.dump, time.Now())
+	}
+
+	if o.logpath != "" {
+		w, err := os.Create(o.logpath)
+		if err != nil {
+			return fmt.Errorf("failed to create logfile %q: %v", o.logpath, err)
+		}
+		defer func() {
+			w.Close()
+			log.SetOutput(os.Stderr)
+		}()
+		log.SetOutput(io.MultiWriter(os.Stderr, w))
 	}
 	if o.logexporterGCSPath != "" {
 		o.testArgs += fmt.Sprintf(" --logexporter-gcs-path=%s", o.logexporterGCSPath)
