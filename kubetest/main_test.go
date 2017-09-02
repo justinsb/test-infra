@@ -87,7 +87,7 @@ func TestWriteMetadata(t *testing.T) {
 		// Now we've set things up, call the function
 		//
 		os.Chdir(topDir) // version file is read from "."
-		writeMetadata(dumpDir, strings.Join(sourceNames, ","))
+		writeMetadata(dumpDir, nil, strings.Join(sourceNames, ","))
 
 		// Load up the output
 		metadata := map[string]string{}

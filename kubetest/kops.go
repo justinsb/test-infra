@@ -40,6 +40,7 @@ var (
 	kopsSSHKey       = flag.String("kops-ssh-key", "", "(kops only) Path to ssh key-pair for each node (defaults '~/.ssh/kube_aws_rsa' if unset.)")
 	kopsKubeVersion  = flag.String("kops-kubernetes-version", "", "(kops only) If set, the version of Kubernetes to deploy (can be a URL to a GCS path where the release is stored) (Defaults to kops default, latest stable release.).")
 	kopsZones        = flag.String("kops-zones", "us-west-2a", "(kops AWS only) AWS zones for kops deployment, comma delimited.")
+	kopsNetworking   = flag.String("kops-networking", "", "(kops only) Networking mode for kops.")
 	kopsNodes        = flag.Int("kops-nodes", 2, "(kops only) Number of nodes to create.")
 	kopsUpTimeout    = flag.Duration("kops-up-timeout", 20*time.Minute, "(kops only) Time limit between 'kops config / kops update' and a response from the Kubernetes API.")
 	kopsAdminAccess  = flag.String("kops-admin-access", "", "(kops only) If set, restrict apiserver access to this CIDR range.")
@@ -53,6 +54,7 @@ type kops struct {
 	kubeVersion string
 	sshKey      string
 	zones       []string
+	networking  string
 	nodes       int
 	adminAccess string
 	cluster     string
@@ -235,6 +237,7 @@ func newKops() (*kops, error) {
 		kubeVersion: *kopsKubeVersion,
 		sshKey:      sshKey + ".pub", // kops only needs the public key, e2es need the private key.
 		zones:       zones,
+		networking:  *kopsNetworking,
 		nodes:       *kopsNodes,
 		adminAccess: *kopsAdminAccess,
 		cluster:     *kopsCluster,
@@ -260,6 +263,9 @@ func (k kops) Up() error {
 	}
 	if k.image != "" {
 		createArgs = append(createArgs, "--image", k.image)
+	}
+	if k.networking != "" {
+		createArgs = append(createArgs, "--networking", k.networking)
 	}
 	if k.args != "" {
 		createArgs = append(createArgs, strings.Split(k.args, " ")...)
@@ -290,6 +296,15 @@ func (k kops) DumpClusterLogs(localPath, gcsPath string) error {
 		}
 	}
 	return defaultDumpClusterLogs(localPath, gcsPath)
+}
+
+func (k kops) GetMetadata() (map[string]string, error) {
+	m, err := defaultGetMetadata()
+	if err != nil {
+		return m, err
+	}
+	m["networking"] = k.networking
+	return m, nil
 }
 
 func (k kops) TestSetup() error {

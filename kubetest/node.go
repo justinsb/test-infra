@@ -40,6 +40,10 @@ func (n nodeDeploy) DumpClusterLogs(localPath, gcsPath string) error {
 	return nil
 }
 
+func (n nodeDeploy) GetMetadata() (map[string]string, error) {
+	return defaultGetMetadata()
+}
+
 func (n nodeDeploy) TestSetup() error {
 	log.Print("Noop - Node TestSetup()")
 	return nil

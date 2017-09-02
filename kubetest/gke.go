@@ -334,6 +334,10 @@ export LOG_DUMP_SSH_KEY='%[3]s'
 		dumpCmd)))
 }
 
+func (g *gkeDeployer) GetMetadata() (map[string]string, error) {
+	return defaultGetMetadata()
+}
+
 func (g *gkeDeployer) TestSetup() error {
 	if g.setup {
 		// Ensure setup is a singleton.

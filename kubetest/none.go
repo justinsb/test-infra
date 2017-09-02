@@ -38,6 +38,10 @@ func (n noneDeploy) DumpClusterLogs(localPath, gcsPath string) error {
 	return defaultDumpClusterLogs(localPath, gcsPath)
 }
 
+func (n noneDeploy) GetMetadata() (map[string]string, error) {
+	return defaultGetMetadata()
+}
+
 func (n noneDeploy) TestSetup() error {
 	log.Print("Noop TestSetup()")
 	return nil

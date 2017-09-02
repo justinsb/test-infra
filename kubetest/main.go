@@ -224,6 +224,9 @@ type deployer interface {
 	DumpClusterLogs(localPath, gcsPath string) error
 	TestSetup() error
 	Down() error
+
+	// GetMetadata returns the metadata
+	GetMetadata() (map[string]string, error)
 }
 
 func getDeployer(o *options) (deployer, error) {
@@ -324,9 +327,10 @@ func complete(o *options) error {
 		log.SetOutput(io.MultiWriter(os.Stderr, out))
 	}
 
+	var deploy deployer
 	if o.dump != "" {
 		defer func() {
-			if err := writeMetadata(o.dump, o.metadataSources); err != nil {
+			if err := writeMetadata(o.dump, deploy, o.metadataSources); err != nil {
 				log.Printf("error writing metadata: %v", err)
 			}
 		}()
@@ -343,7 +347,8 @@ func complete(o *options) error {
 	}
 	// Get the deployer before we acquire k8s so any additional flag
 	// verifications happen early.
-	deploy, err := getDeployer(o)
+	var err error
+	deploy, err = getDeployer(o)
 	if err != nil {
 		return fmt.Errorf("error creating deployer: %v", err)
 	}
@@ -481,8 +486,15 @@ func maybeMergeJSON(meta map[string]string, path string) {
 }
 
 // Write metadata.json, including version and env arg data.
-func writeMetadata(path, metadataSources string) error {
+func writeMetadata(path string, deployer deployer, metadataSources string) error {
 	m := make(map[string]string)
+	if deployer != nil {
+		metadata, err := deployer.GetMetadata()
+		if err != nil {
+			return err
+		}
+		m = metadata
+	}
 
 	// Look for any sources of metadata and load 'em
 	for _, f := range strings.Split(metadataSources, ",") {

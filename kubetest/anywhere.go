@@ -178,6 +178,10 @@ func (k kubernetesAnywhere) DumpClusterLogs(localPath, gcsPath string) error {
 	return nil
 }
 
+func (k kubernetesAnywhere) GetMetadata() (map[string]string, error) {
+	return defaultGetMetadata()
+}
+
 func (k kubernetesAnywhere) TestSetup() error {
 	o, err := output(exec.Command("make", "--silent", "-C", k.path, "kubeconfig-path"))
 	if err != nil {

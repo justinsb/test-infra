@@ -449,6 +449,10 @@ func waitForNodes(d deployer, nodes int, timeout time.Duration) error {
 	return fmt.Errorf("waiting for nodes timed out")
 }
 
+func defaultGetMetadata() (map[string]string, error) {
+	return make(map[string]string), nil
+}
+
 func defaultDumpClusterLogs(localArtifactsDir, logexporterGCSPath string) error {
 	logDumpPath := "./cluster/log-dump/log-dump.sh"
 	// cluster/log-dump/log-dump.sh only exists in the Kubernetes tree

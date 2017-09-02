@@ -57,6 +57,10 @@ func (b *bashDeployer) DumpClusterLogs(localPath, gcsPath string) error {
 	return defaultDumpClusterLogs(localPath, gcsPath)
 }
 
+func (b *bashDeployer) GetMetadata() (map[string]string, error) {
+	return defaultGetMetadata()
+}
+
 func (b *bashDeployer) TestSetup() error {
 	return nil
 }
