@@ -50,7 +50,7 @@ func reportFinishedJson(report string, build string, tmpdir string, success bool
 	if err := enc.Encode(m); err != nil {
 		return fmt.Errorf("error writing %q: %v", p, err)
 	}
-	return gcsUploadFile(filepath.Join(report, "finished.json"), p)
+	return gcsUploadFile(urlJoin(report, "finished.json"), p)
 }
 
 // reportStartedJson creates and writes the started.json file to the specified path
@@ -95,23 +95,30 @@ func reportStartedJson(report string, build string, tmpdir string) error {
 	if err := enc.Encode(m); err != nil {
 		return fmt.Errorf("error writing %q: %v", p, err)
 	}
-	return gcsUploadFile(filepath.Join(report, "started.json"), p)
+	return gcsUploadFile(urlJoin(report, "started.json"), p)
+}
+
+func urlJoin(elems ...string) string {
+	for i := range elems {
+		elems[i] = strings.TrimSuffix(elems[i], "/")
+	}
+	return strings.Join(elems, "/")
 }
 
 // uploadReportFiles copies files to the report destination
 func uploadReportFiles(report string, build string, dump string, logpath string) error {
 	if logpath != "" {
-		if err := gcsUploadFile(filepath.Join(report, build, "build-log.txt"), logpath); err != nil {
+		if err := gcsUploadFile(urlJoin(report, build, "build-log.txt"), logpath); err != nil {
 			return fmt.Errorf("error uploading build-log: %v", err)
 		}
 	}
 	if dump != "" {
-		if err := gcsUploadArtfiacts(filepath.Join(report, build, "artifacts"), dump); err != nil {
+		if err := gcsUploadArtfiacts(urlJoin(report, build, "artifacts"), dump); err != nil {
 			return fmt.Errorf("error uploading artifacts: %v", err)
 		}
 	}
 
-	return gcsSetFileContents(filepath.Join(report, "latest-build.txt"), []byte(build))
+	return gcsSetFileContents(urlJoin(report, "latest-build.txt"), []byte(build))
 }
 
 func gcsUploadFile(dst, src string) error {
