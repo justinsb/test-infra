@@ -281,6 +281,14 @@ func (k kops) IsUp() error {
 }
 
 func (k kops) DumpClusterLogs(localPath, gcsPath string) error {
+	// TODO: Move to golang, or infer correct provider from cloud
+	if os.Getenv("KUBERNETES_PROVIDER") == "" {
+		kubernetesProvider := "aws"
+		log.Printf("setting KUBERNETES_PROVIDER to %q for cluster log dump", kubernetesProvider)
+		if err := os.Setenv("KUBERNETES_PROVIDER", kubernetesProvider); err != nil {
+			return fmt.Errorf("error setting KUBERNETES_PROVIDER env var: %v", err)
+		}
+	}
 	return defaultDumpClusterLogs(localPath, gcsPath)
 }
 
