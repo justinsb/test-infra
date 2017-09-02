@@ -26,6 +26,7 @@ go_library(
         "main.go",
         "node.go",
         "none.go",
+        "report.go",
         "stage.go",
         "util.go",
     ],

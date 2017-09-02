@@ -99,6 +99,7 @@ type options struct {
 	provider            string
 	publish             string
 	runtimeConfig       string
+	report              string
 	save                string
 	skew                bool
 	stage               stageStrategy
@@ -144,6 +145,7 @@ func defineFlags() *options {
 	flag.BoolVar(&o.perfTests, "perf-tests", false, "If true, run tests from perf-tests repo.")
 	flag.StringVar(&o.provider, "provider", "", "Kubernetes provider such as gce, gke, aws, etc")
 	flag.StringVar(&o.publish, "publish", "", "Publish version to the specified gs:// path on success")
+	flag.StringVar(&o.report, "report", "", "If set, copy or upload test result files to this location")
 	flag.StringVar(&o.runtimeConfig, "runtime-config", "batch/v2alpha1=true", "If set, API versions can be turned on or off while bringing up the API server.")
 	flag.StringVar(&o.stage.dockerRegistry, "registry", "", "Push images to the specified docker registry (e.g. gcr.io/a-test-project)")
 	flag.StringVar(&o.save, "save", "", "Save credentials to gs:// path on --up if set (or load from there if not --up)")
@@ -273,9 +275,20 @@ func complete(o *options) error {
 		interrupt.Reset(timeout)
 	}
 
-	if o.dump != "" {
-		defer writeMetadata(o.dump, o.metadataSources)
-		defer writeXML(o.dump, time.Now())
+	if o.report != "" {
+		if o.dump == "" {
+			tmpdir, err := ioutil.TempDir("", "kubetest-dump")
+			if err != nil {
+				return fmt.Errorf("error creating tempdir for dumping output: %v", err)
+			}
+			o.dump = tmpdir
+		}
+		if o.logpath == "" {
+			o.logpath = filepath.Join(o.dump, "build-log.txt")
+		}
+		if err := reportStartedJson(o.report); err != nil {
+			return fmt.Errorf("error writing started.json: %v", err)
+		}
 	}
 
 	if o.logpath != "" {
@@ -290,6 +303,24 @@ func complete(o *options) error {
 		}()
 		out = f
 		log.SetOutput(io.MultiWriter(os.Stderr, out))
+	}
+
+	success := false
+
+	if o.dump != "" {
+		defer func() {
+			m, err := writeMetadata(o.dump, o.metadataSources)
+			if err != nil {
+				log.Printf("error writing metadata: %v", err)
+			}
+			// We always have o.dump != "" when o.report != ""
+			if o.report != "" {
+				if err := reportFinishedJson(o.report, success, m); err != nil {
+					log.Printf("error writing finished.json: %v", err)
+				}
+			}
+		}()
+		defer writeXML(o.dump, time.Now())
 	}
 	if o.logexporterGCSPath != "" {
 		o.testArgs += fmt.Sprintf(" --logexporter-gcs-path=%s", o.logexporterGCSPath)
@@ -338,6 +369,10 @@ func complete(o *options) error {
 
 	if err := run(deploy, *o); err != nil {
 		return err
+	}
+
+	if err == nil {
+		success = true
 	}
 
 	// Save the state if we upped a new cluster without downing it
@@ -436,7 +471,7 @@ func maybeMergeJSON(meta map[string]string, path string) {
 }
 
 // Write metadata.json, including version and env arg data.
-func writeMetadata(path, metadataSources string) error {
+func writeMetadata(path, metadataSources string) (map[string]string, error) {
 	m := make(map[string]string)
 
 	// Look for any sources of metadata and load 'em
@@ -459,11 +494,13 @@ func writeMetadata(path, metadataSources string) error {
 	}
 	f, err := os.Create(filepath.Join(path, "metadata.json"))
 	if err != nil {
-		return err
+		return m, err
 	}
 	defer f.Close()
-	e := json.NewEncoder(f)
-	return e.Encode(m)
+	if err := json.NewEncoder(f).Encode(m); err != nil {
+		return m, fmt.Errorf("error writing metadata.json: %v", err)
+	}
+	return m, nil
 }
 
 // Install cloudsdk tarball to location, updating PATH
