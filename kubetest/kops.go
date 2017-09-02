@@ -295,6 +295,7 @@ func (k kops) DumpClusterLogs(localPath, gcsPath string) error {
 			return fmt.Errorf("error setting KUBERNETES_PROVIDER env var: %v", err)
 		}
 	}
+	log.Printf("ENVIRON: %v", os.Environ())
 	return defaultDumpClusterLogs(localPath, gcsPath)
 }
 
