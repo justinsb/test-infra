@@ -118,6 +118,27 @@ func xmlWrap(name string, f func() error) error {
 }
 
 // return cmd.Wait() and/or timing out.
+func runCommandLogOutput(cmd *exec.Cmd) error {
+	if out != nil {
+		if cmd.Stdout != nil {
+			cmd.Stdout = io.MultiWriter(cmd.Stdout, out)
+		} else if verbose {
+			cmd.Stdout = io.MultiWriter(os.Stdout, out)
+		} else {
+			cmd.Stdout = out
+		}
+		if cmd.Stderr != nil {
+			cmd.Stderr = io.MultiWriter(cmd.Stderr, out)
+		} else if verbose {
+			cmd.Stderr = io.MultiWriter(os.Stderr, out)
+		} else {
+			cmd.Stderr = out
+		}
+	}
+	return finishRunning(cmd)
+}
+
+// return cmd.Wait() and/or timing out.
 func finishRunning(cmd *exec.Cmd) error {
 	stepName := strings.Join(cmd.Args, " ")
 	if terminated {

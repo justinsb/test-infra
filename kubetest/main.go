@@ -49,6 +49,9 @@ var (
 	verbose      = false
 	timeout      = time.Duration(0)
 	boskos       = client.NewClient(os.Getenv("JOB_NAME"), "http://boskos")
+
+	// out is the stream to which we should send any additional output that should be in the log file
+	out io.Writer
 )
 
 // Joins os.Getwd() and path
@@ -276,15 +279,17 @@ func complete(o *options) error {
 	}
 
 	if o.logpath != "" {
-		w, err := os.Create(o.logpath)
+		f, err := os.Create(o.logpath)
 		if err != nil {
 			return fmt.Errorf("failed to create logfile %q: %v", o.logpath, err)
 		}
 		defer func() {
-			w.Close()
+			f.Close()
 			log.SetOutput(os.Stderr)
+			out = nil
 		}()
-		log.SetOutput(io.MultiWriter(os.Stderr, w))
+		out = f
+		log.SetOutput(io.MultiWriter(os.Stderr, out))
 	}
 	if o.logexporterGCSPath != "" {
 		o.testArgs += fmt.Sprintf(" --logexporter-gcs-path=%s", o.logexporterGCSPath)

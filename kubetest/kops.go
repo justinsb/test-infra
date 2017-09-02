@@ -264,10 +264,10 @@ func (k kops) Up() error {
 	if k.args != "" {
 		createArgs = append(createArgs, strings.Split(k.args, " ")...)
 	}
-	if err := finishRunning(exec.Command(k.path, createArgs...)); err != nil {
+	if err := runCommandLogOutput(exec.Command(k.path, createArgs...)); err != nil {
 		return fmt.Errorf("kops configuration failed: %v", err)
 	}
-	if err := finishRunning(exec.Command(k.path, "update", "cluster", k.cluster, "--yes")); err != nil {
+	if err := runCommandLogOutput(exec.Command(k.path, "update", "cluster", k.cluster, "--yes")); err != nil {
 		return fmt.Errorf("kops bringup failed: %v", err)
 	}
 	// TODO(zmerlynn): More cluster validation. This should perhaps be
@@ -293,7 +293,7 @@ func (k kops) TestSetup() error {
 		// Assume that if we already have it, it's good.
 		return nil
 	}
-	if err := finishRunning(exec.Command(k.path, "export", "kubecfg", k.cluster)); err != nil {
+	if err := runCommandLogOutput(exec.Command(k.path, "export", "kubecfg", k.cluster)); err != nil {
 		return fmt.Errorf("Failure exporting kops kubecfg: %v", err)
 	}
 	return nil
@@ -303,10 +303,10 @@ func (k kops) Down() error {
 	// We do a "kops get" first so the exit status of "kops delete" is
 	// more sensical in the case of a non-existent cluster. ("kops
 	// delete" will exit with status 1 on a non-existent cluster)
-	err := finishRunning(exec.Command(k.path, "get", "clusters", k.cluster))
+	err := runCommandLogOutput(exec.Command(k.path, "get", "clusters", k.cluster))
 	if err != nil {
 		// This is expected if the cluster doesn't exist.
 		return nil
 	}
-	return finishRunning(exec.Command(k.path, "delete", "cluster", k.cluster, "--yes"))
+	return runCommandLogOutput(exec.Command(k.path, "delete", "cluster", k.cluster, "--yes"))
 }
