@@ -285,6 +285,9 @@ func complete(o *options) error {
 		}
 		if o.dump == "" {
 			o.dump = filepath.Join(tmpdir, "artifacts")
+			if err := os.MkdirAll(o.dump, 0755); err != nil {
+				return fmt.Errorf("error doing mkdirs on %q: %v", o.dump, err)
+			}
 		}
 		if o.logpath == "" {
 			o.logpath = filepath.Join(tmpdir, "build-log.txt")
