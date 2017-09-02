@@ -615,5 +615,5 @@ func skewTest(args []string, prefix string, checkSkew bool) error {
 }
 
 func test(testArgs []string) error {
-	return finishRunning(exec.Command("./hack/ginkgo-e2e.sh", testArgs...))
+	return runCommandLogOutput(exec.Command("./hack/ginkgo-e2e.sh", testArgs...))
 }
