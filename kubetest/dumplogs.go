@@ -189,10 +189,14 @@ func kubectlGetNodes() (*nodeList, error) {
 		return nil, err
 	}
 
+	log.Printf("nodes: %s", string(o))
+
 	nodes := &nodeList{}
 	if err := json.Unmarshal(o, nodes); err != nil {
 		return nil, fmt.Errorf("error parsing kubectl get nodes output: %v", err)
 	}
+
+	log.Printf("nodes: %v", nodes)
 
 	return nodes, nil
 }

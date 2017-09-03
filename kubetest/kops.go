@@ -236,7 +236,7 @@ func newKops() (*kops, error) {
 	return &kops{
 		path:        *kopsPath,
 		kubeVersion: *kopsKubeVersion,
-		sshKey:      sshKey + ".pub", // kops only needs the public key, e2es need the private key.
+		sshKey:      sshKey,
 		zones:       zones,
 		networking:  *kopsNetworking,
 		nodes:       *kopsNodes,
@@ -252,7 +252,7 @@ func (k kops) Up() error {
 	createArgs := []string{
 		"create", "cluster",
 		"--name", k.cluster,
-		"--ssh-public-key", k.sshKey,
+		"--ssh-public-key", k.sshKey + ".pub", // kops only needs the public key, e2es need the private key.
 		"--node-count", strconv.Itoa(k.nodes),
 		"--zones", strings.Join(k.zones, ","),
 	}
@@ -288,7 +288,11 @@ func (k kops) IsUp() error {
 }
 
 func (k kops) DumpClusterLogs(localPath, gcsPath string) error {
-	key, err := ioutil.ReadFile(k.sshKey)
+	privateKeyPath := k.sshKey
+	if strings.HasPrefix(privateKeyPath, "~/") {
+		privateKeyPath = filepath.Join(os.Getenv("HOME"), privateKeyPath[2:])
+	}
+	key, err := ioutil.ReadFile(privateKeyPath)
 	if err != nil {
 		return fmt.Errorf("error reading private key %q: %v", k.sshKey, err)
 	}
