@@ -472,7 +472,7 @@ func defaultDumpClusterLogs(localArtifactsDir, logexporterGCSPath string) error 
 		log.Printf("Dumping logs locally to: %v", localArtifactsDir)
 		cmd = exec.Command(logDumpPath, localArtifactsDir)
 	}
-	return finishRunning(cmd)
+	return runCommandLogOutput(cmd)
 }
 
 func dumpFederationLogs(location string) error {
