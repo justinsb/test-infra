@@ -160,6 +160,10 @@ func (d *logDumperNode) dump() []error {
 }
 
 func (d *logDumperNode) shellToFile(command string, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Printf("unable to mkdir on %q: %v", filepath.Dir(path), err)
+	}
+
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("error creating file %q: %v", path, err)
