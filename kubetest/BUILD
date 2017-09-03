@@ -18,6 +18,7 @@ go_library(
         "anywhere.go",
         "bash.go",
         "build.go",
+        "dumplogs.go",
         "e2e.go",
         "extract.go",
         "federation.go",
@@ -30,7 +31,10 @@ go_library(
         "stage.go",
         "util.go",
     ],
-    deps = ["//boskos/client:go_default_library"],
+    deps = [
+        "//boskos/client:go_default_library",
+        "//vendor/golang.org/x/crypto/ssh:go_default_library",
+    ],
 )
 
 filegroup(

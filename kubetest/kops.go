@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"log"
 	"os"
@@ -287,16 +288,31 @@ func (k kops) IsUp() error {
 }
 
 func (k kops) DumpClusterLogs(localPath, gcsPath string) error {
-	// TODO: Move to golang, or infer correct provider from cloud
-	if os.Getenv("KUBERNETES_PROVIDER") == "" {
-		kubernetesProvider := "aws"
-		log.Printf("setting KUBERNETES_PROVIDER to %q for cluster log dump", kubernetesProvider)
-		if err := os.Setenv("KUBERNETES_PROVIDER", kubernetesProvider); err != nil {
-			return fmt.Errorf("error setting KUBERNETES_PROVIDER env var: %v", err)
-		}
+	key, err := ioutil.ReadFile(k.sshKey)
+	if err != nil {
+		return fmt.Errorf("error reading private key %q: %v", k.sshKey, err)
 	}
-	log.Printf("ENVIRON: %v", os.Environ())
-	return defaultDumpClusterLogs(localPath, gcsPath)
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("error parsing private key %q: %v", k.sshKey, err)
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User: "admin",
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	logDumper, err := newLogDumper(sshConfig, localPath)
+	if err != nil {
+		return err
+	}
+
+	return logDumper.DumpAllNodes()
+
+	//return defaultDumpClusterLogs(localPath, gcsPath)
 }
 
 func (k kops) GetMetadata() (map[string]string, error) {
