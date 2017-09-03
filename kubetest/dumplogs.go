@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/ssh"
@@ -24,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type logDumper struct {
@@ -143,20 +145,80 @@ func (d *logDumperNode) dump() []error {
 		errors = append(errors, err)
 	}
 
+	services, err := d.listSystemdServices()
+	if err != nil {
+		errors = append(errors, fmt.Errorf("error listing systemd services: %v", err))
+	}
 	for _, s := range d.dumper.services {
-		if err := d.shellToFile("sudo journalctl --output=cat -u "+s+".service", filepath.Join(d.dir, s+".log")); err != nil {
-			errors = append(errors, err)
+		name := s + ".service"
+		for _, service := range services {
+			if service == name {
+				if err := d.shellToFile("sudo journalctl --output=cat -u "+name, filepath.Join(d.dir, s+".log")); err != nil {
+					errors = append(errors, err)
+				}
+			}
 		}
 	}
 
-	for _, f := range d.dumper.files {
-		// TODO: Capture rotates logs
-		if err := d.shellToFile("sudo cat /var/log/"+f+".log", filepath.Join(d.dir, f+".log")); err != nil {
-			errors = append(errors, err)
+	fileList, err := d.findFiles("/var/log")
+	if err != nil {
+		errors = append(errors, fmt.Errorf("error reading /var/log: %v", err))
+	}
+	for _, name := range d.dumper.files {
+		prefix := "/var/log/" + name + ".log"
+		for _, f := range fileList {
+			if !strings.HasPrefix(f, prefix) {
+				continue
+			}
+			if err := d.shellToFile("sudo cat "+f, filepath.Join(d.dir, filepath.Base(f))); err != nil {
+				errors = append(errors, err)
+			}
 		}
 	}
 
 	return errors
+}
+
+func (d *logDumperNode) findFiles(dir string) ([]string, error) {
+	session, err := d.client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("error creating ssh session: %v", err)
+	}
+	defer session.Close()
+
+	out, err := session.CombinedOutput("sudo find " + dir + " -print0")
+	if err != nil {
+		return nil, fmt.Errorf("error listing %q: %v", dir, err)
+	}
+
+	var paths []string
+	for _, b := range bytes.Split(out, []byte{0}) {
+		paths = append(paths, string(b))
+	}
+	return paths, nil
+}
+
+func (d *logDumperNode) listSystemdServices() ([]string, error) {
+	session, err := d.client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("error creating ssh session: %v", err)
+	}
+	defer session.Close()
+
+	out, err := session.CombinedOutput("sudo systemctl list-units -t service --no-pager --no-legend")
+	if err != nil {
+		return nil, fmt.Errorf("error listing systemd services: %v", err)
+	}
+
+	var services []string
+	for _, line := range strings.Split(string(out), "\n") {
+		tokens := strings.Fields(line)
+		if len(tokens) == 0 || tokens[0] == "" {
+			continue
+		}
+		services = append(services, tokens[0])
+	}
+	return services, nil
 }
 
 func (d *logDumperNode) shellToFile(command string, path string) error {
