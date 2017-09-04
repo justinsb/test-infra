@@ -248,6 +248,31 @@ func newKops() (*kops, error) {
 	}, nil
 }
 
+func (k kops) isGCE() bool {
+	// TODO: Replace with `kops-cloud` flag?
+	regions := []string{
+		"asia-east1",
+		"asia-northeast1",
+		"asia-southeast1",
+		"australia-southeast1",
+		"europe-west1",
+		"europe-west2",
+		"europe-west3",
+		"us-central1",
+		"us-east1",
+		"us-east4",
+		"us-west1",
+	}
+	for _, z := range k.zones {
+		for _, region := range regions {
+			if strings.HasPrefix(z, region+"-") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (k kops) Up() error {
 	createArgs := []string{
 		"create", "cluster",
@@ -255,6 +280,14 @@ func (k kops) Up() error {
 		"--ssh-public-key", k.sshKey + ".pub", // kops only needs the public key, e2es need the private key.
 		"--node-count", strconv.Itoa(k.nodes),
 		"--zones", strings.Join(k.zones, ","),
+	}
+	if k.isGCE() {
+		stdout, err := output(exec.Command("gcloud", "config", "get-value", "project"))
+		if err != nil {
+			return fmt.Errorf("error finding current gcloud project: %v", err)
+		}
+		project := strings.TrimSpace(string(stdout))
+		createArgs = append(createArgs, "--project", project)
 	}
 	if k.kubeVersion != "" {
 		createArgs = append(createArgs, "--kubernetes-version", k.kubeVersion)

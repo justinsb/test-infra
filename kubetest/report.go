@@ -23,13 +23,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
+	//"hash/crc32"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -115,6 +116,38 @@ func (g *GCSClient) Read(path string) ([]byte, error) {
 		return nil, fmt.Errorf("error reading %s: %v", path, err)
 	}
 	return d, nil
+}
+
+func (g *GCSClient) List(p string) ([]string, []*storage.Object, error) {
+	bucket, key, err := gcsClient.parsePath(p)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	prefix := key
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	ctx := context.Background()
+	var prefixes []string
+	var objects []*storage.Object
+	err = g.client.Objects.List(bucket).Delimiter("/").Prefix(prefix).Projection("noAcl").Pages(ctx, func(page *storage.Objects) error {
+		for _, o := range page.Items {
+			objects = append(objects, o)
+		}
+		for _, p := range page.Prefixes {
+			prefixes = append(prefixes, p)
+		}
+		return nil
+	})
+	if err != nil {
+		if isGCSNotFound(err) {
+			return nil, nil, os.ErrNotExist
+		}
+		return nil, nil, fmt.Errorf("error listing %s: %v", p, err)
+	}
+	return prefixes, objects, nil
 }
 
 func (g *GCSClient) Update(path string, predefinedAcl string, contentType googleapi.MediaOption, f func(in []byte) ([]byte, error)) error {
@@ -224,6 +257,27 @@ func (g *GCSClient) Write(path string, updated []byte, predefinedAcl string, med
 	return nil
 }
 
+func (g *GCSClient) Create(path string, updated []byte, predefinedAcl string, mediaOptions ...googleapi.MediaOption) error {
+	bucket, key, err := g.parsePath(path)
+	if err != nil {
+		return err
+	}
+	hasher := md5.New()
+	hasher.Write(updated)
+	hasher.Sum(nil)
+
+	obj := &storage.Object{
+		Name:    key,
+		Md5Hash: base64.StdEncoding.EncodeToString(hasher.Sum(nil)),
+	}
+	r := bytes.NewReader(updated)
+	if _, err := g.client.Objects.Insert(bucket, obj).IfGenerationMatch(0).PredefinedAcl(predefinedAcl).Media(r, mediaOptions...).Do(); err != nil {
+		return fmt.Errorf("error creating %s: %v", path, err)
+	}
+
+	return nil
+}
+
 // reportFinishedJson creates and writes the finished.json file to the specified path
 func reportFinishedJson(report string, buildID string, success bool, metadata map[string]string) error {
 	result := "FAILURE"
@@ -284,8 +338,8 @@ func updateResultCache(report string, entry resultCacheEntry) error {
 	})
 }
 
-// reportStartedJson creates and writes the started.json file to the specified path
-func reportStartedJson(report string, buildID string) error {
+// startReport creates and writes the started.json file to the specified path
+func startReport(report string) (string, error) {
 	m := make(map[string]interface{})
 	m["timestamp"] = time.Now().Unix()
 
@@ -317,9 +371,9 @@ func reportStartedJson(report string, buildID string) error {
 
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return fmt.Errorf("error encoding started.json: %v", err)
+		return "", fmt.Errorf("error encoding started.json: %v", err)
 	}
-	return gcsSetFileContents(urlJoin(report, buildID, "started.json"), b, googleapi.ContentType(contentTypeApplicationJson))
+	return generateNextBuildID(report, b)
 }
 
 func urlJoin(elems ...string) string {
@@ -384,24 +438,107 @@ func nodeName() string {
 	return "unknown"
 }
 
-func getBuildName() string {
-	// https://github.com/kubernetes/test-infra/blob/master/jenkins/bootstrap.py#L651-L655
-	id := os.Getenv("BUILD_ENV")
-	if id != "" {
-		return id
+func generateNextBuildID(report string, startedJson []byte) (string, error) {
+	gcsClient, err := getGCSClient()
+	if err != nil {
+		return "", err
 	}
 
-	t := time.Now().UTC()
+	var buildID string
 
-	ts := t.Format("2006_01_02-15_04_05")
-	ts = strings.Replace(ts, "_", "", -1)
-	nodeName := nodeName()
-	hasher := crc32.NewIEEE()
-	hasher.Write([]byte(nodeName))
-	nodeHash := hasher.Sum32()
-	pid := os.Getpid()
+	// We can't reuse latest-build.txt because that is the last finished job, not the last started job (i.e. fails under concurrent executions)
+	err = gcsClient.Update(urlJoin(report, "next-build.txt"), aclPublicRead, googleapi.ContentType(contentTypeTextPlain),
+		func(existing []byte) ([]byte, error) {
+			if existing == nil {
+				buildID = "1"
+			} else {
+				buildID = strings.TrimSpace(string(existing))
+			}
 
-	return fmt.Sprintf("%s-%x-%d", ts, nodeHash, pid)
+			v, err := strconv.Atoi(buildID)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing %s/next-build.txt: %q", report, buildID)
+			}
+
+			return []byte(strconv.Itoa(v + 1)), nil
+		})
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("Assigned build id: %s", buildID)
+
+	// We skip reading latest-build.txt because of concurrent jobs
+	// Maybe atomically update "next-
+	//latestBytes, err := gcsClient.Read(urlJoin(report, "latest-build.txt"))
+	//if err != nil {
+	//	if os.IsNotExist(err) {
+	//		latestBytes = nil
+	//	} else {
+	//		return "", fmt.Errorf("error reading latest-build: %v", err)
+	//	}
+	//}
+	//
+	//latest := 0
+	//
+	//if latestBytes != nil {
+	//	latest, err = strconv.Atoi(strings.TrimSpace(string(latestBytes)))
+	//	if err != nil {
+	//		log.Printf("error parsing %s/latest-build.txt: %q", report, string(latestBytes))
+	//		latest = 0
+	//	}
+	//}
+	//
+	//if latest == 0 {
+	//	log.Printf("latest-build.txt could not be read; listing directory")
+
+	//prefixes, _, err := gcsClient.List(report)
+	//if err != nil {
+	//	return "", fmt.Errorf("error listing directory %s", report)
+	//}
+	//
+	//for _, prefix := range prefixes {
+	//	name := path.Base(prefix)
+	//	number, err := strconv.Atoi(name)
+	//	if err == nil {
+	//		if number > latest {
+	//			latest = number
+	//		}
+	//	} else {
+	//		log.Printf("ignoring unrecognized build number %s", prefix)
+	//	}
+	//}
+	//}
+
+	// Double check by atomically creating the started.json file
+	err = gcsClient.Create(urlJoin(report, buildID, "started.json"), startedJson, aclPublicRead, googleapi.ContentType(contentTypeApplicationJson))
+	if err != nil {
+		return "", fmt.Errorf("unable to create started.json: %v", err)
+	}
+
+	return buildID, nil
+
+	//// https://github.com/kubernetes/test-infra/blob/master/jenkins/bootstrap.py#L651-L655
+	//id := os.Getenv("BUILD_ENV")
+	//if id != "" {
+	//	return id
+	//}
+	//
+	//t := time.Now().UTC()
+	//
+	//ts := t.Format("2006_01_02_15_04_05")
+	//ts = strings.Replace(ts, "_", "", -1)
+	//return ts
+
+	//ts := t.Format("2006_01_02-15_04_05")
+	//ts = strings.Replace(ts, "_", "", -1)
+	//nodeName := nodeName()
+	//hasher := crc32.NewIEEE()
+	//hasher.Write([]byte(nodeName))
+	//nodeHash := hasher.Sum32()
+	//pid := os.Getpid()
+	//
+	//return fmt.Sprintf("%s-%x-%d", ts, nodeHash, pid)
 }
 
 type resultCacheEntry struct {

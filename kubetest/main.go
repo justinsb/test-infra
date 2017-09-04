@@ -281,7 +281,10 @@ func complete(o *options) error {
 	success := false
 
 	if o.report != "" {
-		buildID := getBuildName()
+		buildID, err := startReport(o.report)
+		if err != nil {
+			return fmt.Errorf("error writing started.json: %v", err)
+		}
 		tmpdir, err := ioutil.TempDir("", "kubetest-dump")
 		if err != nil {
 			return fmt.Errorf("error creating tempdir for dumping output: %v", err)
@@ -294,9 +297,6 @@ func complete(o *options) error {
 		}
 		if o.logpath == "" {
 			o.logpath = filepath.Join(tmpdir, "build-log.txt")
-		}
-		if err := reportStartedJson(o.report, buildID); err != nil {
-			return fmt.Errorf("error writing started.json: %v", err)
 		}
 		defer func() {
 			// Load the metadata output
