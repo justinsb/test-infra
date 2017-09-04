@@ -42,6 +42,9 @@ import (
 const maxResultsCache = 500
 const aclPublicRead = "publicRead"
 
+const contentTypeApplicationJson = "application/json"
+const contentTypeTextPlain = "text/plain"
+
 type GCSClient struct {
 	client *storage.Service
 }
@@ -114,7 +117,7 @@ func (g *GCSClient) Read(path string) ([]byte, error) {
 	return d, nil
 }
 
-func (g *GCSClient) Update(path string, predefinedAcl string, f func(in []byte) ([]byte, error)) error {
+func (g *GCSClient) Update(path string, predefinedAcl string, contentType googleapi.MediaOption, f func(in []byte) ([]byte, error)) error {
 	bucket, key, err := g.parsePath(path)
 	if err != nil {
 		return err
@@ -177,7 +180,7 @@ func (g *GCSClient) Update(path string, predefinedAcl string, f func(in []byte) 
 			Md5Hash: base64.StdEncoding.EncodeToString(hasher.Sum(nil)),
 		}
 		r := bytes.NewReader(updated)
-		_, err = g.client.Objects.Insert(bucket, obj).PredefinedAcl(predefinedAcl).IfGenerationMatch(ifGenerationMatch).Media(r).Do()
+		_, err = g.client.Objects.Insert(bucket, obj).PredefinedAcl(predefinedAcl).IfGenerationMatch(ifGenerationMatch).Media(r, contentType).Do()
 		if err != nil {
 			if isGCSPreconditionFailed(err) {
 				log.Printf("Got version conflict during update; retrying")
@@ -200,7 +203,7 @@ func (g *GCSClient) parsePath(path string) (string, string, error) {
 	return bucket, key, nil
 }
 
-func (g *GCSClient) Write(path string, updated []byte, predefinedAcl string) error {
+func (g *GCSClient) Write(path string, updated []byte, predefinedAcl string, mediaOptions ...googleapi.MediaOption) error {
 	bucket, key, err := g.parsePath(path)
 	if err != nil {
 		return err
@@ -214,7 +217,7 @@ func (g *GCSClient) Write(path string, updated []byte, predefinedAcl string) err
 		Md5Hash: base64.StdEncoding.EncodeToString(hasher.Sum(nil)),
 	}
 	r := bytes.NewReader(updated)
-	if _, err := g.client.Objects.Insert(bucket, obj).PredefinedAcl(predefinedAcl).Media(r).Do(); err != nil {
+	if _, err := g.client.Objects.Insert(bucket, obj).PredefinedAcl(predefinedAcl).Media(r, mediaOptions...).Do(); err != nil {
 		return fmt.Errorf("error writing %s: %v", path, err)
 	}
 
@@ -238,19 +241,19 @@ func reportFinishedJson(report string, buildID string, success bool, metadata ma
 	if err != nil {
 		return fmt.Errorf("error encoding finished.json: %v", err)
 	}
-	if err := gcsSetFileContents(urlJoin(report, buildID, "finished.json"), b); err != nil {
+	if err := gcsSetFileContents(urlJoin(report, buildID, "finished.json"), b, googleapi.ContentType(contentTypeApplicationJson)); err != nil {
 		return fmt.Errorf("error uploading finished.json: %v", err)
 	}
 
-	return updateResultCache(report, buildID, resultCacheEntry{
-		Version: "",
+	return updateResultCache(report, resultCacheEntry{
 		BuildID: buildID,
 		Result:  result,
+		Passed:  success,
 	})
 }
 
 // updateResultCache downloads the results cache, appends the new result, and then uploads the new results
-func updateResultCache(report string, buildID string, entry resultCacheEntry) error {
+func updateResultCache(report string, entry resultCacheEntry) error {
 	p := urlJoin(report, "jobResultsCache.json")
 
 	gcsClient, err := getGCSClient()
@@ -258,7 +261,7 @@ func updateResultCache(report string, buildID string, entry resultCacheEntry) er
 		return err
 	}
 
-	return gcsClient.Update(p, aclPublicRead, func(existing []byte) ([]byte, error) {
+	return gcsClient.Update(p, aclPublicRead, googleapi.ContentType(contentTypeApplicationJson), func(existing []byte) ([]byte, error) {
 		var results []resultCacheEntry
 
 		if len(existing) != 0 {
@@ -316,7 +319,7 @@ func reportStartedJson(report string, buildID string) error {
 	if err != nil {
 		return fmt.Errorf("error encoding started.json: %v", err)
 	}
-	return gcsSetFileContents(urlJoin(report, buildID, "started.json"), b)
+	return gcsSetFileContents(urlJoin(report, buildID, "started.json"), b, googleapi.ContentType(contentTypeApplicationJson))
 }
 
 func urlJoin(elems ...string) string {
@@ -339,7 +342,7 @@ func uploadReportFiles(report string, buildID string, dump string, logpath strin
 		}
 	}
 
-	return gcsSetFileContents(urlJoin(report, "latest-build.txt"), []byte(buildID))
+	return gcsSetFileContents(urlJoin(report, "latest-build.txt"), []byte(buildID), googleapi.ContentType(contentTypeTextPlain))
 }
 
 func gcsUploadFile(dst, src string) error {
@@ -350,13 +353,13 @@ func gcsUploadFile(dst, src string) error {
 	return nil
 }
 
-func gcsSetFileContents(dst string, contents []byte) error {
+func gcsSetFileContents(dst string, contents []byte, contentType googleapi.MediaOption) error {
 	gcsClient, err := getGCSClient()
 	if err != nil {
 		return err
 	}
 
-	return gcsClient.Write(dst, contents, aclPublicRead)
+	return gcsClient.Write(dst, contents, aclPublicRead, contentType)
 }
 
 func gcsUploadArtfiacts(dst, src string) error {
@@ -396,7 +399,9 @@ func getBuildName() string {
 }
 
 type resultCacheEntry struct {
-	Version string `json:"version"`
-	BuildID string `json:"buildnumber"`
-	Result  string `json:"result"`
+	Version    string `json:"version"`
+	BuildID    string `json:"buildnumber"`
+	Result     string `json:"result"`
+	JobVersion string `json:"job-version"`
+	Passed     bool   `json:"passed"`
 }
