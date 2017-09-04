@@ -385,6 +385,12 @@ func nodeName() string {
 }
 
 func getBuildName() string {
+	// https://github.com/kubernetes/test-infra/blob/master/jenkins/bootstrap.py#L651-L655
+	id := os.Getenv("BUILD_ENV")
+	if id != "" {
+		return id
+	}
+
 	t := time.Now().UTC()
 
 	ts := t.Format("2006_01_02-15_04_05")
