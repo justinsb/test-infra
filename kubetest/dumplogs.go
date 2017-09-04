@@ -18,12 +18,10 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -246,45 +244,4 @@ func (d *logDumperNode) shellToFile(command string, path string) error {
 	}
 
 	return nil
-}
-
-func kubectlGetNodes() (*nodeList, error) {
-	o, err := output(exec.Command("kubectl", "get", "nodes", "-ojson"))
-	if err != nil {
-		log.Printf("kubectl get nodes failed: %s\n%s", wrapError(err).Error(), string(o))
-		return nil, err
-	}
-
-	log.Printf("nodes: %s", string(o))
-
-	nodes := &nodeList{}
-	if err := json.Unmarshal(o, nodes); err != nil {
-		return nil, fmt.Errorf("error parsing kubectl get nodes output: %v", err)
-	}
-
-	log.Printf("nodes: %v", nodes)
-
-	return nodes, nil
-}
-
-type nodeList struct {
-	Items []node `json:"items"`
-}
-
-type node struct {
-	Metadata metadata   `json:"metadata"`
-	Status   nodeStatus `json:"status"`
-}
-
-type nodeStatus struct {
-	Addresses []nodeAddress `json:"addresses"`
-}
-
-type nodeAddress struct {
-	Address string `json:"address"`
-	Type    string `json:"type"`
-}
-
-type metadata struct {
-	Name string `json:"name"`
 }

@@ -26,6 +26,7 @@ go_library(
         "kops.go",
         "main.go",
         "node.go",
+        "nodes.go",
         "none.go",
         "report.go",
         "stage.go",
