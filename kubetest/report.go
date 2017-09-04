@@ -40,6 +40,7 @@ import (
 )
 
 const maxResultsCache = 500
+const aclPublicRead = "publicRead"
 
 type GCSClient struct {
 	client *storage.Service
@@ -113,7 +114,7 @@ func (g *GCSClient) Read(path string) ([]byte, error) {
 	return d, nil
 }
 
-func (g *GCSClient) Update(path string, f func(in []byte) ([]byte, error)) error {
+func (g *GCSClient) Update(path string, predefinedAcl string, f func(in []byte) ([]byte, error)) error {
 	bucket, key, err := g.parsePath(path)
 	if err != nil {
 		return err
@@ -176,7 +177,7 @@ func (g *GCSClient) Update(path string, f func(in []byte) ([]byte, error)) error
 			Md5Hash: base64.StdEncoding.EncodeToString(hasher.Sum(nil)),
 		}
 		r := bytes.NewReader(updated)
-		_, err = g.client.Objects.Insert(bucket, obj).IfGenerationMatch(ifGenerationMatch).Media(r).Do()
+		_, err = g.client.Objects.Insert(bucket, obj).PredefinedAcl(predefinedAcl).IfGenerationMatch(ifGenerationMatch).Media(r).Do()
 		if err != nil {
 			if isGCSPreconditionFailed(err) {
 				log.Printf("Got version conflict during update; retrying")
@@ -195,7 +196,7 @@ func (g *GCSClient) parsePath(path string) (string, string, error) {
 		return "", "", fmt.Errorf("cannot parse URL %q", path)
 	}
 	bucket := u.Host
-	key := strings.TrimSuffix(u.Path, "/")
+	key := strings.TrimPrefix(u.Path, "/")
 	return bucket, key, nil
 }
 
@@ -233,13 +234,11 @@ func reportFinishedJson(report string, buildID string, success bool, metadata ma
 	m["passed"] = success
 	m["metadata"] = metadata
 
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(m); err != nil {
+	b, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
 		return fmt.Errorf("error encoding finished.json: %v", err)
 	}
-	if err := gcsSetFileContents(urlJoin(report, buildID, "finished.json"), b.Bytes()); err != nil {
+	if err := gcsSetFileContents(urlJoin(report, buildID, "finished.json"), b); err != nil {
 		return fmt.Errorf("error uploading finished.json: %v", err)
 	}
 
@@ -252,14 +251,14 @@ func reportFinishedJson(report string, buildID string, success bool, metadata ma
 
 // updateResultCache downloads the results cache, appends the new result, and then uploads the new results
 func updateResultCache(report string, buildID string, entry resultCacheEntry) error {
-	p := urlJoin(report, buildID, "jobResultsCache.json")
+	p := urlJoin(report, "jobResultsCache.json")
 
 	gcsClient, err := getGCSClient()
 	if err != nil {
 		return err
 	}
 
-	return gcsClient.Update(p, func(existing []byte) ([]byte, error) {
+	return gcsClient.Update(p, aclPublicRead, func(existing []byte) ([]byte, error) {
 		var results []resultCacheEntry
 
 		if len(existing) != 0 {
@@ -313,13 +312,11 @@ func reportStartedJson(report string, buildID string) error {
 	//		additional_headers=['-h', 'x-goog-meta-link: %s' % paths.pr_path]
 	//)
 
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(m); err != nil {
+	b, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
 		return fmt.Errorf("error encoding started.json: %v", err)
 	}
-	return gcsSetFileContents(urlJoin(report, buildID, "started.json"), b.Bytes())
+	return gcsSetFileContents(urlJoin(report, buildID, "started.json"), b)
 }
 
 func urlJoin(elems ...string) string {
@@ -359,7 +356,7 @@ func gcsSetFileContents(dst string, contents []byte) error {
 		return err
 	}
 
-	return gcsClient.Write(dst, contents, "publicRead")
+	return gcsClient.Write(dst, contents, aclPublicRead)
 }
 
 func gcsUploadArtfiacts(dst, src string) error {
