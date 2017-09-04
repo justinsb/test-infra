@@ -295,7 +295,7 @@ func complete(o *options) error {
 		if o.logpath == "" {
 			o.logpath = filepath.Join(tmpdir, "build-log.txt")
 		}
-		if err := reportStartedJson(o.report, buildID, tmpdir); err != nil {
+		if err := reportStartedJson(o.report, buildID); err != nil {
 			return fmt.Errorf("error writing started.json: %v", err)
 		}
 		defer func() {
@@ -303,7 +303,7 @@ func complete(o *options) error {
 			metadata := map[string]string{}
 			maybeMergeJSON(metadata, filepath.Join(o.dump, "metadata.json"))
 
-			if err := reportFinishedJson(o.report, buildID, tmpdir, success, metadata); err != nil {
+			if err := reportFinishedJson(o.report, buildID, success, metadata); err != nil {
 				log.Printf("error writing finished.json: %v", err)
 			}
 

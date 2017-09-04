@@ -34,6 +34,9 @@ go_library(
     deps = [
         "//boskos/client:go_default_library",
         "//vendor/golang.org/x/crypto/ssh:go_default_library",
+        "//vendor/golang.org/x/oauth2/google:go_default_library",
+        "//vendor/google.golang.org/api/googleapi:go_default_library",
+        "//vendor/google.golang.org/api/storage/v1:go_default_library",
     ],
 )
 
