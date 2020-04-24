@@ -116,28 +116,28 @@ def build_test(cloud='aws',
     if distro is None:
         kops_ssh_user = 'admin'
         kops_image = None
-    elif distro == 'amazonlinux2':
+    elif distro == 'amzn2':
         kops_ssh_user = 'ec2-user'
         kops_image = '137112412989/amzn2-ami-hvm-2.0.20200304.0-x86_64-gp2'
     elif distro == 'centos7':
         kops_ssh_user = 'centos'
         kops_image = "679593333241/CentOS Linux 7 x86_64 HVM EBS ENA 1901_01-b7ee8a69-ee97-4a49-9e68-afaee216db2e-ami-05713873c6794f575.4" # pylint: disable=line-too-long
-    elif distro == 'debian9':
+    elif distro == 'deb9':
         kops_ssh_user = 'admin'
         kops_image = '379101102735/debian-stretch-hvm-x86_64-gp2-2019-11-13-63558'
-    elif distro == 'debian10':
+    elif distro == 'deb10':
         kops_ssh_user = 'admin'
         kops_image = '136693071363/debian-10-amd64-20200210-166'
     elif distro == 'flatcar':
         kops_ssh_user = 'core'
         kops_image = '075585003325/Flatcar-stable-2303.3.1-hvm'
-    elif distro == 'ubuntu1604':
+    elif distro == 'u1604':
         kops_ssh_user = 'ubuntu'
         kops_image = '099720109477/ubuntu/images/hvm-ssd/ubuntu-xenial-16.04-amd64-server-20200407'
-    elif distro == 'ubuntu1804':
+    elif distro == 'u1804':
         kops_ssh_user = 'ubuntu'
         kops_image = '099720109477/ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server-20200408'
-    elif distro == 'ubuntu2004':
+    elif distro == 'u2004':
         kops_ssh_user = 'ubuntu'
         kops_image = '099720109477/ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-20200423'
     elif distro == 'rhel7':
@@ -182,7 +182,11 @@ def build_test(cloud='aws',
     if distro:
         suffix += "-" + distro
     if k8s_version:
-        suffix += "-k8s" + k8s_version
+        suffix += "-k" + k8s_version.replace("1.", "")
+
+    # We current have an issue with long cluster names; let's warn if we encounter them
+    if len(suffix) > 24:
+        raise Exception("suffix name %s is probably too long" % (suffix))
 
     tab = 'kops-grid' + suffix
 
@@ -221,21 +225,21 @@ networking_options = [
     'calico',
     'cilium',
     'flannel',
-    'kopeio-vxlan',
+    'kopeio',
 ]
 
 distro_options = [
     None,
-    'amazonlinux2',
+    'amzn2',
     'centos7',
-    'debian9',
-    'debian10',
+    'deb9',
+    'deb10',
     'flatcar',
     'rhel7',
     'rhel8',
-    'ubuntu1604',
-    'ubuntu1804',
-    'ubuntu2004',
+    'u1604',
+    'u1804',
+    'u2004',
 ]
 
 k8s_versions = [
