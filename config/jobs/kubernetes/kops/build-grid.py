@@ -57,12 +57,12 @@ template = """
 # This should be used for temporary tests we are evaluating,
 # and ideally linked to a bug, and removed once the bug is fixed
 run_hourly = [
-    # flannel networking issues: https://github.com/kubernetes/kops/pull/8381#issuecomment-616689498
-    'kops-grid-aws-flannel-centos7',
-    'kops-grid-aws-flannel-rhel7',
 ]
 
 run_daily = [
+    # flannel networking issues: https://github.com/kubernetes/kops/pull/8381#issuecomment-616689498
+    'kops-grid-aws-flannel-centos7',
+    'kops-grid-aws-flannel-rhel7',
 ]
 
 def simple_hash(s):
@@ -78,7 +78,7 @@ def build_cron(key):
 
     minute = simple_hash("minutes:" + key) % 60
     hour = simple_hash("hours:" + key) % 24
-    #day_of_week = simple_hash("day_of_week:" + key) % 7
+    day_of_week = simple_hash("day_of_week:" + key) % 7
 
     job_count += 1
 
@@ -91,11 +91,8 @@ def build_cron(key):
         runs_per_week += 7
         return "%d %d * * *" % (minute, hour)
 
-    # other jobs will run once per week, but for now let's backfill with once per day
-    #runs_per_week += 1
-    #return "%d %d * * %d" % (minute, hour, day_of_week)
-    runs_per_week += 7
-    return "%d %d * * *" % (minute, hour)
+    runs_per_week += 1
+    return "%d %d * * %d" % (minute, hour, day_of_week)
 
 def remove_line_with_prefix(s, prefix):
     keep = []
@@ -237,9 +234,9 @@ distro_options = [
 
 k8s_versions = [
     None,
-    # "1.16",
-    # "1.17",
-    # "1.18",
+    "1.16",
+    "1.17",
+    "1.18",
 ]
 
 def generate():
